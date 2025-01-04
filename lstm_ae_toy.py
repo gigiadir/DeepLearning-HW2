@@ -47,7 +47,7 @@ class LSTM_AE(nn.Module):
         self.hidden_size = hidden_size
 
         self.encoder = nn.LSTM(input_size = input_size, hidden_size = hidden_size, num_layers=1, batch_first=True)
-        self.decoder = nn.LSTM(input_size = hidden_size, hidden_size = hidden_size, num_layers=1, batch_first=True)
+        self.decoder = nn.LSTM(input_size = hidden_size, hidden_size = hidden_size, num_layers=1, batch_first=True, proj_size=1)
 
     def forward(self, x):
         _, (context, _) = self.encoder(x)
@@ -61,7 +61,7 @@ if __name__ == '__main__':
     parser.add_argument("--hidden-size", type = int, default = 32)
     parser.add_argument("--learning_rate", type=float, default=1e-3)
     parser.add_argument("--batch-size", type=int, default=128)
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=1000)
 
     args = parser.parse_args()
 
