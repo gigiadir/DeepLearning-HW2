@@ -7,7 +7,7 @@ from torch import nn, optim
 from torch.optim.lr_scheduler import ExponentialLR
 from torch.utils.data import TensorDataset, DataLoader
 
-from lstm_ae import LSTM_AE
+from lstm_autoencoder import LSTMAutoEncoder
 from synthetic_data_utils import generate_synthetic_data, plot_examples
 from utils import save_grid_search_results_to_csv, split_data_to_train_validation_test
 
@@ -23,7 +23,7 @@ def train_and_evaluate_lstm_ae(train_tensor_dataset, validation_tensor_dataset, 
     train_loader = DataLoader(train_tensor_dataset, batch_size=batch_size, shuffle=True)
     validation_loader = DataLoader(validation_tensor_dataset, batch_size=batch_size, shuffle=True)
 
-    model = LSTM_AE(input_size=input_size, hidden_size=hidden_size)
+    model = LSTMAutoEncoder(input_size=input_size, hidden_size=hidden_size)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
     scheduler = ExponentialLR(optimizer, gamma=0.95)
     criterion = nn.MSELoss()

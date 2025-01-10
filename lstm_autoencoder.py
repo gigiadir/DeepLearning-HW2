@@ -1,8 +1,8 @@
 from torch import nn
 
-class LSTM_AE(nn.Module):
+class LSTMAutoEncoder(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers = 1):
-        super(LSTM_AE, self).__init__()
+        super(LSTMAutoEncoder, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
 
