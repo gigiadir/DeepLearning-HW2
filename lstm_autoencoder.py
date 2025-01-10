@@ -10,7 +10,9 @@ class LSTMAutoEncoder(nn.Module):
         self.encoder = nn.LSTM(input_size = input_size, hidden_size = hidden_size, batch_first=True)
         self.decoder = nn.LSTM(input_size = hidden_size, hidden_size = hidden_size, batch_first=True)
         self.reconstruction_linear = nn.Linear(in_features=hidden_size, out_features=input_size, bias=False)
-        #self.classification_linear = nn.Linear(in_features=hidden_size, out_features=n_classes, bias=False)
+
+        if n_classes > 0:
+            self.classification_linear = nn.Linear(in_features=hidden_size, out_features=n_classes, bias=False)
 
     def forward(self, x):
         _, (context, _) = self.encoder(x)
@@ -18,6 +20,7 @@ class LSTMAutoEncoder(nn.Module):
         decoder_output, _ = self.decoder(context)
 
         reconstruction = self.reconstruction_linear(decoder_output)
-        class_output = self.classification_linear(decoder_output) if self.n_classes > 0 else None
+
+        class_output = self.classification_linear(decoder_output[:, -1, :]) if self.n_classes > 0 else None
 
         return reconstruction, class_output

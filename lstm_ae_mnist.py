@@ -39,11 +39,7 @@ def train_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist", should_save_m
             reconstruction, classes_probabilities = model(images)
 
             if is_classification:
-                _, prediction = torch.max(classes_probabilities, 1)
-                loss = classification_criterion(prediction, labels)
-                total += labels.size(0)
-                correct += (prediction == labels).sum().item()
-
+                loss = classification_criterion(classes_probabilities, labels)
             else:
                 loss = reconstruction_criterion(reconstruction, images)
 
@@ -87,8 +83,37 @@ def section_1(args):
 
 def section_2(args):
     args.n_classes = 10
+    args.epochs = 10
+    transform = transforms.Compose([transforms.ToTensor()])
+    model = LSTMAutoEncoder(args.input_size, args.hidden_size, args.n_classes)
+    model.load_state_dict(torch.load("output/mnist/models/lstm_autoencoder_mnist_classification.pth", weights_only=True))
+    # model = train_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist_classification", should_save_model=True)
+    test_set = datasets.MNIST(root='./data', train=False, transform=transform, download=True)
+    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=True)
 
-    model = train_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist_classification")
+    correct = 0
+    total = 0
+    for images, labels in test_loader:
+        images = images.view(images.shape[0], args.input_size, args.input_size)
+        output, classes_probabilities = model(images)
+        prediction = torch.argmax(classes_probabilities, dim=1)
+        correct += (prediction == labels).sum().item()
+        total += labels.size(0)
+
+    print(f"Accuracy: {100 * correct / total}")
+    # model = LSTMAutoEncoder(args.input_size, args.hidden_size, args.n_classes)
+    #
+
+    # train_set = datasets.MNIST(root='./data', train=True, transform=transform, download=True)
+    # train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
+    #
+    # for images, labels in train_loader:
+    #     images = images.view(images.shape[0], args.input_size, args.input_size)
+    #     output, y_pred = model(images)
+    #     prediction = torch.argmax(y_pred, dim=1)
+    #     correct =  (prediction == labels).sum().item()
+    #     print(correct)
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -103,6 +128,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    section_1(args)
+    section_2(args)
 
 
