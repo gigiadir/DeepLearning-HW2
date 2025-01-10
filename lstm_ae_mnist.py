@@ -8,14 +8,17 @@ import matplotlib.pyplot as plt
 
 from lstm_autoencoder import LSTMAutoEncoder
 
-def calculate_classification_accuracy(model, data_loader):
+def calculate_classification_accuracy(model, data_loader, is_pixel_series):
     model.eval()
     correct = 0
     total_samples = 0
 
     with torch.no_grad():
         for images, labels in data_loader:
-            images = images.view(images.shape[0], args.input_size, args.input_size)
+            if is_pixel_series:
+                images = images.view(images.shape[0], images.shape[2] * images.shape[3], 1)
+            else:
+                images = images.view(images.shape[0], args.input_size, args.input_size)
             reconstruction, classes_probabilities = model(images)
             predictions = torch.argmax(classes_probabilities, dim=1)
             correct += (predictions == labels).sum().item()
@@ -25,7 +28,7 @@ def calculate_classification_accuracy(model, data_loader):
 
     return accuracy
 
-def calculate_initial_loss(model, data_loader):
+def calculate_initial_loss(model, data_loader, is_pixel_series):
     model.eval()
     classification_criterion = nn.CrossEntropyLoss()
     reconstruction_criterion = nn.MSELoss()
@@ -35,7 +38,10 @@ def calculate_initial_loss(model, data_loader):
     total_loss = 0
     with torch.no_grad():
         for images, labels in data_loader:
-            images = images.view(images.shape[0], args.input_size, args.input_size)
+            if is_pixel_series:
+                images = images.view(images.shape[0], images.shape[2] * images.shape[3], 1)
+            else:
+                images = images.view(images.shape[0], args.input_size, args.input_size)
             reconstruction, classes_probabilities = model(images)
 
             if is_classification:
@@ -48,7 +54,8 @@ def calculate_initial_loss(model, data_loader):
         avg_loss = total_loss / len(data_loader)
     return avg_loss
 
-def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist", should_save_model = True):
+def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist",
+                                     should_save_model = True, is_pixel_series = False):
     transform = transforms.Compose([transforms.ToTensor()])
     train_set = datasets.MNIST(root='./data', train=True, transform=transform, download=True)
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
@@ -70,20 +77,28 @@ def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist", 
     test_accuracy_per_epoch = []
     loss_per_epoch = []
 
-    initial_accuracy = calculate_classification_accuracy(model, test_loader)
+    initial_accuracy = calculate_classification_accuracy(model, test_loader, is_pixel_series)
     test_accuracy_per_epoch.append(initial_accuracy)
+    print(f"Initial accuracy: {initial_accuracy}")
 
-    initial_loss = calculate_initial_loss(model, train_loader)
+
+    initial_loss = calculate_initial_loss(model, train_loader, is_pixel_series)
     loss_per_epoch.append(initial_loss)
+    print(f"Initial loss: {initial_loss}")
 
     for epoch in range(epochs):
         model.train()
         train_loss = 0
-
+        batch_count = 0
         for images, labels in train_loader:
+            model.train()
             optimizer.zero_grad()
 
-            images = images.view(images.shape[0], args.input_size, args.input_size)
+            if is_pixel_series:
+                images = images.view(images.shape[0], images.shape[2] * images.shape[3], 1)
+            else:
+                images = images.view(images.shape[0], args.input_size, args.input_size)
+
             reconstruction, classes_probabilities = model(images)
 
             if is_classification:
@@ -95,20 +110,23 @@ def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist", 
             optimizer.step()
 
             train_loss += loss.item()
+            batch_count += 1
+            print(f"Epoch [{epoch + 1}/{epochs}], Batch {batch_count}, Total Loss: {train_loss}")
 
         avg_train_loss = train_loss / len(train_loader)
         loss_per_epoch.append(avg_train_loss)
         print(f"Epoch [{epoch + 1}/{epochs}], Loss: {avg_train_loss}")
 
-        test_accuracy = calculate_classification_accuracy(model, test_loader)
+        test_accuracy = calculate_classification_accuracy(model, test_loader, is_pixel_series)
         test_accuracy_per_epoch.append(test_accuracy)
+        print(f"Epoch [{epoch + 1}/{epochs}], Test Accuracy: {test_accuracy}")
 
     if should_save_model:
         torch.save(model.state_dict(), f"output/mnist/models/{model_name}.pth")
 
     return model, loss_per_epoch, test_accuracy_per_epoch
 
-def generate_accuracy_and_loss_plot(epochs, loss_per_epoch, test_accuracy_per_epoch):
+def generate_accuracy_and_loss_plot(epochs, loss_per_epoch, test_accuracy_per_epoch, filename="losses_vs_accuracy"):
     fig, axs = plt.subplots(1, 2, figsize=(18, 6))
 
     axs[0].plot(epochs, loss_per_epoch, label="Loss", marker='o')
@@ -137,12 +155,12 @@ def generate_accuracy_and_loss_plot(epochs, loss_per_epoch, test_accuracy_per_ep
                     xytext=(-10, -15), ha='center')
 
     plt.tight_layout()
-    plt.savefig("output/mnist/losses_vs_accuracy.png")
+    plt.savefig(f"output/mnist/{filename}.png")
     plt.show()
 
 def section_1(args):
     transform = transforms.Compose([transforms.ToTensor()])
-    model = train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist", should_save_model=False)
+    model, _, _ = train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist", should_save_model=False)
     # model = LSTMAutoEncoder(args.input_size, args.hidden_size)
     # model.load_state_dict(torch.load("output/mnist/models/lstm_autoencoder_mnist.pth", weights_only=True))
 
@@ -153,7 +171,7 @@ def section_1(args):
     with torch.no_grad():
         images, _ = next(iter(test_loader))
         images = images.view(images.size(0), args.input_size, args.input_size)
-        reconstructed, _ = model(images)
+        reconstructed, _= model(images)
         fig, axes = plt.subplots(2, 3, figsize=(10, 6))
         plt.suptitle('MNIST Original vs. Reconstructed', fontsize = 16)
         for i in range(3):
@@ -174,6 +192,16 @@ def section_2(args):
     epochs = list(range(args.epochs + 1))
     generate_accuracy_and_loss_plot(epochs, loss_per_epoch, test_accuracy_per_epoch)
 
+def section_3(args):
+    args.n_classes = 10
+    args.epochs = 5
+    args.input_size = 1
+
+    model, loss_per_epoch, test_accuracy_per_epoch = train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist_classification_pixel_by_pixel", should_save_model=True, is_pixel_series=True)
+    epochs = list(range(args.epochs + 1))
+    generate_accuracy_and_loss_plot(epochs, loss_per_epoch, test_accuracy_per_epoch, filename="loss_vs_accuracy_pixel_series")
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-size", type=int, default=28)
@@ -187,6 +215,6 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    section_2(args)
+    section_3(args)
 
 
