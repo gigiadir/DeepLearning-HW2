@@ -113,7 +113,6 @@ def plot_original_vs_reconstructed(original, reconstructed):
     plt.savefig("./output/synthetic_data/reconstructed.png")
     plt.show()
 
-
 def section_1a():
     n_seq = 10000
     seq_len = 50

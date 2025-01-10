@@ -8,6 +8,46 @@ import matplotlib.pyplot as plt
 
 from lstm_autoencoder import LSTMAutoEncoder
 
+def calculate_classification_accuracy(model, data_loader):
+    model.eval()
+    correct = 0
+    total_samples = 0
+
+    with torch.no_grad():
+        for images, labels in data_loader:
+            images = images.view(images.shape[0], args.input_size, args.input_size)
+            reconstruction, classes_probabilities = model(images)
+            predictions = torch.argmax(classes_probabilities, dim=1)
+            correct += (predictions == labels).sum().item()
+            total_samples += labels.size(0)
+
+    accuracy = correct / total_samples
+
+    return accuracy
+
+def calculate_initial_loss(model, data_loader):
+    model.eval()
+    classification_criterion = nn.CrossEntropyLoss()
+    reconstruction_criterion = nn.MSELoss()
+
+    is_classification = bool(model.n_classes > 0)
+
+    total_loss = 0
+    with torch.no_grad():
+        for images, labels in data_loader:
+            images = images.view(images.shape[0], args.input_size, args.input_size)
+            reconstruction, classes_probabilities = model(images)
+
+            if is_classification:
+                loss = classification_criterion(classes_probabilities, labels)
+            else:
+                loss = reconstruction_criterion(reconstruction, images)
+
+            total_loss += loss.item()
+
+        avg_loss = total_loss / len(data_loader)
+    return avg_loss
+
 def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist", should_save_model = True):
     transform = transforms.Compose([transforms.ToTensor()])
     train_set = datasets.MNIST(root='./data', train=True, transform=transform, download=True)
@@ -30,44 +70,20 @@ def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist", 
     test_accuracy_per_epoch = []
     loss_per_epoch = []
 
-    model.eval()
-    correct_predictions = 0
-    total_samples = 0
-    train_loss = 0
-    with torch.no_grad():
-        for images, labels in test_loader:
-            images = images.view(images.shape[0], args.input_size, args.input_size)
-            reconstruction, classes_probabilities = model(images)
-            predictions = torch.argmax(classes_probabilities, dim=1)
-            correct_predictions += (predictions == labels).sum().item()
-            total_samples += labels.size(0)
+    initial_accuracy = calculate_classification_accuracy(model, test_loader)
+    test_accuracy_per_epoch.append(initial_accuracy)
 
-        test_accuracy_per_epoch.append(correct_predictions / total_samples)
-
-        for images, labels in train_loader:
-            images = images.view(images.shape[0], args.input_size, args.input_size)
-            reconstruction, classes_probabilities = model(images)
-
-            if is_classification:
-                loss = classification_criterion(classes_probabilities, labels)
-            else:
-                loss = reconstruction_criterion(reconstruction, images)
-
-            train_loss += loss.item()
-
-        avg_train_loss = train_loss / len(train_loader)
-        loss_per_epoch.append(avg_train_loss)
-
+    initial_loss = calculate_initial_loss(model, train_loader)
+    loss_per_epoch.append(initial_loss)
 
     for epoch in range(epochs):
         model.train()
         train_loss = 0
 
         for images, labels in train_loader:
-            images = images.view(images.shape[0], args.input_size, args.input_size)
-
             optimizer.zero_grad()
 
+            images = images.view(images.shape[0], args.input_size, args.input_size)
             reconstruction, classes_probabilities = model(images)
 
             if is_classification:
@@ -84,19 +100,8 @@ def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist", 
         loss_per_epoch.append(avg_train_loss)
         print(f"Epoch [{epoch + 1}/{epochs}], Loss: {avg_train_loss}")
 
-        model.eval()
-        correct_predictions = 0
-        total_samples = 0
-
-        with torch.no_grad():
-            for images, labels in test_loader:
-                images = images.view(images.shape[0], args.input_size, args.input_size)
-                reconstruction, classes_probabilities = model(images)
-                predictions = torch.argmax(classes_probabilities, dim=1)
-                correct_predictions += (predictions == labels).sum().item()
-                total_samples += labels.size(0)
-
-        test_accuracy_per_epoch.append(correct_predictions / total_samples)
+        test_accuracy = calculate_classification_accuracy(model, test_loader)
+        test_accuracy_per_epoch.append(test_accuracy)
 
     if should_save_model:
         torch.save(model.state_dict(), f"output/mnist/models/{model_name}.pth")
