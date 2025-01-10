@@ -33,7 +33,7 @@ def train_and_evaluate_lstm_ae(train_tensor_dataset, validation_tensor_dataset, 
         total_loss = 0.0
 
         for batch_idx, inputs in enumerate(train_loader):
-            outputs = model(inputs)
+            outputs, _ = model(inputs)
             loss = criterion(outputs, inputs)
 
             optimizer.zero_grad()
@@ -95,7 +95,7 @@ def grid_search(train_tensor, validation_tensor, device):
 def reconstruct_input(model, x):
     model.eval()
     with torch.no_grad():
-        reconstruction = model(x)
+        reconstruction, _ = model(x)
 
     return reconstruction
 
