@@ -235,7 +235,7 @@ def section_3():
     data = pd.read_csv('data/sp-500-stock-prices/SP 500 Stock Prices 2014-2017.csv', parse_dates=['date'])
     features = ['open', 'high', 'low', 'close', 'volume']
     df = data.sort_values(['symbol', 'date']).reset_index(drop=True)
-
+    df = df.dropna()
     df_scaled = df.copy()
 
     for symbol, group in df.groupby('symbol'):
@@ -250,7 +250,7 @@ def section_3():
     all_dates = []
 
     unique_symbols = df_scaled['symbol'].unique()
-    unique_symbols = ["AAPL", "MSFT", "AMZN"]
+    # unique_symbols = ["AAPL", "MSFT", "AMZN"]
 
     for symbol in unique_symbols:
         print("Creating targets and sequences for symbol {}".format(symbol))
@@ -317,8 +317,9 @@ def section_3():
             epoch_recon_loss = 0.0
             epoch_pred_loss = 0.0
 
-
+            batch_idx = 0
             for batch in train_loader:
+                batch_idx += 1
                 sequences, targets = batch
                 sequences = sequences.to(device)
                 targets = targets.to(device)
@@ -346,7 +347,7 @@ def section_3():
                 # Accumulate losses
                 epoch_recon_loss += recon_loss.item()
                 epoch_pred_loss += pred_loss.item()
-
+                print(f"epoch {epoch + 1} batch {batch_idx} - recon_loss: {epoch_recon_loss}, pred_loss: {epoch_pred_loss}")
             # Average losses for the epoch
             avg_recon_loss = epoch_recon_loss / len(train_loader)
             avg_pred_loss = epoch_pred_loss / len(train_loader)
