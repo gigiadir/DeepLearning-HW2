@@ -9,7 +9,7 @@ from torch.utils.data import TensorDataset, DataLoader
 
 from lstm_autoencoder import LSTMAutoEncoder
 from synthetic_data_utils import generate_synthetic_data, plot_examples
-from utils import save_grid_search_results_to_csv, split_data_to_train_validation_test
+from utils import save_grid_search_results_to_csv, split_data_to_train_validation_test, get_optimizer
 
 
 def train_and_evaluate_lstm_ae(train_tensor_dataset, validation_tensor_dataset, device, hyperparameters):
@@ -24,7 +24,7 @@ def train_and_evaluate_lstm_ae(train_tensor_dataset, validation_tensor_dataset, 
     validation_loader = DataLoader(validation_tensor_dataset, batch_size=batch_size, shuffle=True)
 
     model = LSTMAutoEncoder(input_size=input_size, hidden_size=hidden_size)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = get_optimizer(model, args)
     scheduler = ExponentialLR(optimizer, gamma=0.95)
     criterion = nn.MSELoss()
 
@@ -143,6 +143,7 @@ if __name__ == '__main__':
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--gradient-clipping", type=float, default=0.5)
     parser.add_argument("--epochs", type=int, default=150)
+    parser.add_argument("--optimizer", type=str, default="adam")
 
     args = parser.parse_args()
 

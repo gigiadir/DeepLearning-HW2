@@ -1,6 +1,4 @@
 import argparse
-from collections import Counter
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -10,18 +8,33 @@ from torchvision import datasets, transforms
 import matplotlib.pyplot as plt
 
 from lstm_autoencoder import LSTMAutoEncoder
+from utils import get_optimizer
 
-def calculate_classification_accuracy(model, data_loader, is_pixel_series):
+
+def prepare_images(images, is_pixel_series, n_row = 28, n_col = 28):
+    if is_pixel_series:
+        images = images.view(images.shape[0], -1, 1)
+    else:
+        images = images.view(images.shape[0], n_row, n_col)
+
+    return images
+
+def get_transform(args, is_pixel_series):
+    if is_pixel_series:
+        transform = transforms.Compose([transforms.Resize((args.input_size ** 2, 1)), transforms.ToTensor()])
+    else:
+        transform = transforms.Compose([transforms.ToTensor()])
+
+    return transform
+
+def calculate_classification_accuracy(model, data_loader, is_pixel_series, args):
     model.eval()
     correct = 0
     total_samples = 0
 
     with torch.no_grad():
         for images, labels in data_loader:
-            if is_pixel_series:
-                images = images.view(images.shape[0], -1, 1)
-            else:
-                images = images.view(images.shape[0], args.input_size, args.input_size)
+            images = prepare_images(images, is_pixel_series, args.input_size, args.input_size)
             reconstruction, classes_probabilities = model(images)
             predictions = torch.argmax(classes_probabilities, dim=1)
             correct += (predictions == labels).sum().item()
@@ -31,7 +44,7 @@ def calculate_classification_accuracy(model, data_loader, is_pixel_series):
 
     return accuracy
 
-def calculate_initial_loss(model, data_loader, is_pixel_series):
+def calculate_loss_on_dataset(model, data_loader, is_pixel_series, args):
     model.eval()
     classification_criterion = nn.CrossEntropyLoss()
     reconstruction_criterion = nn.MSELoss()
@@ -41,17 +54,13 @@ def calculate_initial_loss(model, data_loader, is_pixel_series):
     total_loss = 0
     with torch.no_grad():
         for images, labels in data_loader:
-            if is_pixel_series:
-                images = images.view(images.shape[0], -1, 1)
-            else:
-                images = images.view(images.shape[0], args.input_size, args.input_size)
+            images = prepare_images(images, is_pixel_series, args.input_size, args.input_size)
             reconstruction, classes_probabilities = model(images)
 
             if is_classification:
                 loss = classification_criterion(classes_probabilities, labels)
             else:
                 loss = reconstruction_criterion(reconstruction, images)
-            loss = classification_criterion(classes_probabilities, labels) + reconstruction_criterion(reconstruction, images)
             total_loss += loss.item()
 
         avg_loss = total_loss / len(data_loader)
@@ -60,29 +69,13 @@ def calculate_initial_loss(model, data_loader, is_pixel_series):
 
 def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist",
                                      should_save_model = True, is_pixel_series = False):
-    transform = transforms.Compose([transforms.Resize((784, 1)),transforms.ToTensor()])
 
+    transform = get_transform(args, is_pixel_series)
     train_set = datasets.MNIST(root='./data', train=True, transform=transform, download=True)
+    train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
 
-    # # Filter to include only the desired digits, e.g., 0 and 1
-    desired_digits = [0, 1]
-    train_indices = [i for i, (img, label) in enumerate(train_set) if label in desired_digits]
-    train_indices = np.random.choice(train_indices, 1000, replace=False)
-    #
-    # # Create a subset for the filtered indices
-    train_subset = Subset(train_set, train_indices)
-    #train_subset = train_set
-
-    # Create a DataLoader for the filtered subset
-    train_loader = DataLoader(train_subset, batch_size=args.batch_size, shuffle=True)
-
-    # Define the test set (similarly filtered for consistency)
     test_set = datasets.MNIST(root='./data', train=False, transform=transform, download=True)
-    test_indices = [i for i, (img, label) in enumerate(test_set) if label in desired_digits]
-    test_indices = np.random.choice(test_indices, 200, replace=False)
-    test_subset = Subset(test_set, test_indices)
-    #test_subset = test_set
-    test_loader = DataLoader(test_subset, batch_size=args.batch_size, shuffle=True)
+    test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=True)
 
     model = LSTMAutoEncoder(args.input_size, args.hidden_size, args.n_classes)
     model.train()
@@ -90,7 +83,7 @@ def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist",
     reconstruction_criterion = nn.MSELoss()
     classification_criterion = nn.CrossEntropyLoss()
 
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
+    optimizer = get_optimizer(model, args)
 
     is_classification = bool(args.n_classes > 0)
     epochs = args.epochs
@@ -99,12 +92,12 @@ def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist",
     loss_per_epoch = []
 
     if is_classification:
-        initial_accuracy = calculate_classification_accuracy(model, test_loader, is_pixel_series)
+        initial_accuracy = calculate_classification_accuracy(model, test_loader, is_pixel_series, args)
         test_accuracy_per_epoch.append(initial_accuracy)
         print(f"Initial accuracy: {initial_accuracy}")
 
 
-    initial_loss = calculate_initial_loss(model, train_loader, is_pixel_series)
+    initial_loss = calculate_loss_on_dataset(model, train_loader, is_pixel_series, args)
     loss_per_epoch.append(initial_loss)
     print(f"Initial loss: {initial_loss}")
 
@@ -113,19 +106,9 @@ def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist",
         train_loss = 0
         batch_count = 0
         for images, labels in train_loader:
-            print("Batch #", batch_count)
-            label_counts = torch.bincount(labels)
-            print(f"Label counts: {labels.size(0)}")
-            print(f"Number of images with label 0: {label_counts[0]}")
-            print(f"Number of images with label 1: {label_counts[1]}")
             model.train()
             optimizer.zero_grad()
-
-            if is_pixel_series:
-                images = images.view(images.shape[0], -1, 1)
-            else:
-                images = images.view(images.shape[0], args.input_size, args.input_size)
-
+            images = prepare_images(images, is_pixel_series, args.input_size, args.input_size)
             reconstruction, classes_probabilities = model(images)
 
             if is_classification:
@@ -133,22 +116,21 @@ def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist",
             else:
                 loss = reconstruction_criterion(reconstruction, images)
 
-            loss = classification_criterion(classes_probabilities, labels) + reconstruction_criterion(reconstruction, images)
             loss.backward()
 
-            for name, param in model.named_parameters():
-                if param.requires_grad and param.grad is not None:
-                    print(f"Gradient for {name}: {param.grad.norm().item():.4f}")
+            # for name, param in model.named_parameters():
+            #     if param.requires_grad and param.grad is not None:
+            #         print(f"Gradient for {name}: {param.grad.norm().item():.4f}")
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), args.gradient_clipping)
 
-            total_norm = 0.0
-            for name, param in model.named_parameters():
-                if param.grad is not None:
-                    param_norm = param.grad.data.norm(2)
-                    total_norm += param_norm.item() ** 2
-            total_norm = total_norm ** 0.5
-            print(f"Epoch [{epoch + 1}/{epochs}], Batch {batch_count}, Gradient Norm: {total_norm:.4f}")
+            # total_norm = 0.0
+            # for name, param in model.named_parameters():
+            #     if param.grad is not None:
+            #         param_norm = param.grad.data.norm(2)
+            #         total_norm += param_norm.item() ** 2
+            # total_norm = total_norm ** 0.5
+            # print(f"Epoch [{epoch + 1}/{epochs}], Batch {batch_count}, Gradient Norm: {total_norm:.4f}")
 
             optimizer.step()
 
@@ -160,26 +142,9 @@ def train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist",
         loss_per_epoch.append(avg_train_loss)
         print(f"Epoch [{epoch + 1}/{epochs}], Loss: {avg_train_loss}")
 
-        if is_classification:
-            model.eval()
-            correct = 0
-            total_samples = 0
-
-            with torch.no_grad():
-                for images, labels in test_loader:
-                    if is_pixel_series:
-                        images = images.view(images.shape[0], -1, 1)
-                    else:
-                        images = images.view(images.shape[0], args.input_size, args.input_size)
-                    reconstruction, classes_probabilities = model(images)
-                    predictions = torch.argmax(classes_probabilities, dim=1)
-                    correct += (predictions == labels).sum().item()
-                    total_samples += labels.size(0)
-
-            test_accuracy = correct / total_samples
-
-            test_accuracy_per_epoch.append(test_accuracy)
-            print(f"Epoch [{epoch + 1}/{epochs}], Test Accuracy: {test_accuracy}")
+        test_accuracy = calculate_classification_accuracy(model, test_loader, is_pixel_series, args)
+        test_accuracy_per_epoch.append(test_accuracy)
+        print(f"Epoch [{epoch + 1}/{epochs}], Test Accuracy: {test_accuracy}")
 
 
     if should_save_model:
@@ -254,7 +219,7 @@ def section_2(args):
     generate_accuracy_and_loss_plot(epochs, loss_per_epoch, test_accuracy_per_epoch)
 
 def section_3(args):
-    args.n_classes = 2
+    args.n_classes = 10
     args.epochs = 10
     args.input_size = 1
     args.gradient_clipping = 1.0
@@ -276,10 +241,10 @@ if __name__ == '__main__':
     parser.add_argument("--gradient-clipping", type=float, default=1.0)
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--n-classes", type=int, default=0)
-
+    parser.add_argument("--optimizer", type=str, default="adam")
 
     args = parser.parse_args()
 
-    section_3(args)
+    section_1(args)
 
 
