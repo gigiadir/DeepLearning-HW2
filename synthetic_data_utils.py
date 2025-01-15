@@ -22,6 +22,8 @@ def plot_examples(data: np.ndarray):
     for i in indices:
         plt.plot(data[i], label=f"Example {i}")
     plt.legend(loc="upper right")
+    plt.xlabel("Time")
+    plt.ylabel("Signal Value")
     plt.title(f"Synthetic Data - {num_samples_to_display} Example Signals")
     plt.savefig("./output/synthetic_data/section_1/example.png")
     plt.show()

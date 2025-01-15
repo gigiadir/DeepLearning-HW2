@@ -22,12 +22,14 @@ def create_scaled_stocks_dataframe():
     df = data.sort_values(['symbol', 'date']).reset_index(drop=True)
     df = df.dropna()
     df_scaled = df.copy()
+    scalers = {}
 
     for symbol, group in df.groupby('symbol'):
         scaler = MinMaxScaler()
         df_scaled.loc[group.index, features] = scaler.fit_transform(group[features])
+        scalers[symbol] = scaler
 
-    return df_scaled, scaler
+    return df_scaled, scalers
 
 def create_sequences_for_symbol(symbol_data, seq_length):
     sequences = []
@@ -136,7 +138,7 @@ def section_2(args):
     hidden_size = args.hidden_size
     epochs = args.epochs
 
-    df_scaled, scaler = create_scaled_stocks_dataframe()
+    df_scaled, scalers = create_scaled_stocks_dataframe()
     all_sequences, all_symbols, all_dates = create_sequences(df_scaled, seq_length)
 
     dataset = StockDataset(all_sequences)
@@ -212,8 +214,8 @@ def section_2(args):
 
         reconstructed = reconstructed.cpu().numpy()
 
-        original = scaler.inverse_transform(original_sequences.reshape(-1, len(features)))
-        reconstructed = scaler.inverse_transform(reconstructed.reshape(-1, len(features)))
+        original = scalers[symbol].inverse_transform(original_sequences.reshape(-1, len(features)))
+        reconstructed = scalers[symbol].inverse_transform(reconstructed.reshape(-1, len(features)))
 
         original = original.reshape(-1, seq_length, len(features))
         reconstructed = reconstructed.reshape(-1, seq_length, len(features))
@@ -251,9 +253,8 @@ def section_3(args):
     hidden_size = args.hidden_size # 64
     epochs = args.epochs # 50
     batch_size = args.batch_size # 64
-    learning_rate = args.learning_rate # 1e-3
 
-    df_scaled, scaler = create_scaled_stocks_dataframe()
+    df_scaled, scalers = create_scaled_stocks_dataframe()
     all_sequences, all_targets, all_symbols, all_dates = create_sequences_with_targets(df_scaled, seq_length)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -397,8 +398,9 @@ def multi_step_predict(model, input_sequence, half_T, device):
 
     with torch.no_grad():
         for i in range(half_T):
-            current_input = input_sequence[:, i:i + half_T, :].to(device)
-            predicted = model(current_input)
+            current_input = input_sequence.unsqueeze(0)
+            current_input = current_input[:, i:i + half_T, :].to(device)
+            _, predicted = model(current_input)
             predictions = torch.cat((predictions, predicted), dim = 1)
 
     return predictions
@@ -410,52 +412,51 @@ def one_step_predict(model, input_sequence, half_T, device):
     
     with torch.no_grad():
         for i in range(half_T):
-            current_input = input_sequence[:, i + half_T, :].to(device)
-            prediction = model(current_input.to(device))  # Shape: (1, input_size)
+            current_input = input_sequence.unsqueeze(0)
+            current_input = current_input[:, i - 1 + half_T, :].to(device)
+            _, prediction = model(current_input.unsqueeze(0).to(device))  # Shape: (1, input_size)
             predictions = torch.cat((predictions, prediction), dim = 1)
 
     return predictions
 
 
 def section_4(args):
+    args.seq_length = 200
+
     seq_length = args.seq_length
     input_size = args.input_size
     hidden_size = args.hidden_size  # 64
 
-    df_scaled, scaler = create_scaled_stocks_dataframe()
-    all_sequences, all_targets, all_symbols, all_dates = create_sequences_with_targets(df_scaled, seq_length)
-
+    df_scaled, scalers = create_scaled_stocks_dataframe()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     model = LSTMAutoencoderPredictor(input_size = input_size, hidden_size = hidden_size)
     model.load_state_dict(torch.load('output/sp500/models/best_model_section_3.pth', weights_only=True))
 
-    dataset = StockDatasetPredictor(all_sequences, all_targets)
-    data_loader = DataLoader(dataset, batch_size=1, shuffle=True)
+    selected_symbols = ["AAPL", "MSFT", "AMZN", "SLG", "GOOGL"]
+    print(f'Selected Symbols: {selected_symbols}')
 
-    for batch in data_loader:
-        sequences, targets = batch
-        sequences = sequences.to(device)
+    for symbol in selected_symbols:
+        symbol_data = df_scaled[df_scaled['symbol'] == symbol].reset_index(drop=True)
+        sequences = create_sequences_for_symbol(symbol_data, seq_length)
+        sequences_tensor = torch.tensor(sequences, dtype=torch.float32).to(device)
 
-        T = sequences.size(1)
+        T = seq_length
         half_T = T // 2
+        input_tensor = sequences_tensor[0, :T, :].to(device)
+        actual_targets = sequences_tensor[0, half_T:, :]
+        multi_step_predicted = multi_step_predict(model, input_tensor, half_T, device=device)
+        one_step_predicted = one_step_predict(model, input_tensor, half_T, device=device)
 
-        actual_targets = sequences[:, half_T:, :]
-        multi_step_predicted = multi_step_predict(model, sequences, half_T, device=device)
-        one_step_predicted = one_step_predict(model, sequences, half_T, device=device)
-
-        scaler = MinMaxScaler()
-        scaler.fit(df_scaled[['open', 'high', 'low', 'close', 'volume']])
-
-        actual_targets_rescaled = scaler.inverse_transform(
+        actual_targets_rescaled = scalers[symbol].inverse_transform(
             actual_targets.cpu().numpy().reshape(-1, len(features))).reshape(-1, len(features))
-        multi_step_predicted_rescaled = scaler.inverse_transform(
+        multi_step_predicted_rescaled = scalers[symbol].inverse_transform(
             multi_step_predicted.cpu().numpy().reshape(-1, len(features))).reshape(-1, len(features))
-        one_step_predicted_rescaled = scaler.inverse_transform(
+        one_step_predicted_rescaled = scalers[symbol].inverse_transform(
             one_step_predicted.cpu().numpy().reshape(-1, len(features))).reshape(-1, len(features))
 
 
-        close_idx = features.index('close')
+        close_idx = features.index('high')
         actual_close = actual_targets_rescaled[:, close_idx]
         multi_step_close = multi_step_predicted_rescaled[:, close_idx]
         one_step_close = one_step_predicted_rescaled[:, close_idx]
@@ -463,28 +464,26 @@ def section_4(args):
         plt.figure(figsize=(10, 6))
         time_steps = np.arange(1, len(actual_close) + 1)
 
-        plt.plot(time_steps, actual_close, label='Actual Close Price', color='blue', marker='o')
-        plt.plot(time_steps, multi_step_close, label='Multi-Step Prediction', color='orange', marker='x')
-        plt.plot(time_steps, one_step_close, label='One-Step Prediction', color='green', marker='s')
+        plt.plot(time_steps, actual_close, label='Actual Close Price', color='blue')
+        plt.plot(time_steps, multi_step_close, label='Multi-Step Prediction', color='orange')
+        plt.plot(time_steps, one_step_close, label='One-Step Prediction', color='green')
 
-        plt.title('Comparison of Close Prices: Actual vs. Predictions')
+        plt.title(f'Comparison of Close Prices: Actual vs. Predictions For {symbol}')
         plt.xlabel('Time Step')
         plt.ylabel('Close Price')
         plt.legend()
         plt.grid(True)
-        plt.savefig('output/sp500/section4/comparison_of_actual_close_prices.png')
+        plt.savefig(f'output/sp500/section4/comparison_of_actual_close_prices-{symbol}.png')
         plt.show()
-
-        break
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-size", type=int, default=5)
     parser.add_argument("--hidden-size", type=int, default=64)
-    parser.add_argument("--learning-rate", type=float, default=1e-2)
+    parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--gradient-clipping", type=float, default=0.5)
+    parser.add_argument("--gradient-clipping", type=float, default=1.0)
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--optimizer", type=str, default="adam")
     parser.add_argument("--seq-length", type=int, default=30)

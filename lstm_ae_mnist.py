@@ -186,9 +186,9 @@ def generate_accuracy_and_loss_plot(epochs, loss_per_epoch, test_accuracy_per_ep
 
 def section_1(args):
     transform = transforms.Compose([transforms.ToTensor()])
-    model, _, _ = train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist", should_save_model=False)
-    # model = LSTMAutoEncoder(args.input_size, args.hidden_size)
-    # model.load_state_dict(torch.load("output/mnist/models/lstm_autoencoder_mnist.pth", weights_only=True))
+    # model, _, _ = train_and_evaluate_lstm_ae_mnist(args, model_name="lstm_autoencoder_mnist", should_save_model=False)
+    model = LSTMAutoEncoder(args.input_size, args.hidden_size)
+    model.load_state_dict(torch.load("output/mnist/models/lstm_autoencoder_mnist.pth", weights_only=True))
 
     test_set = datasets.MNIST(root='./data', train=False, transform=transform, download=True)
     test_loader = DataLoader(test_set, batch_size=args.batch_size, shuffle=True)

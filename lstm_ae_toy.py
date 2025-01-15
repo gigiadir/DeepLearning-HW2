@@ -136,33 +136,34 @@ def section_1b():
     # After an over-night run, we got the best results using hidden_size = 64, learning_rate = 0.01, gradient_clipping = 0.5
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--input-size", type=int, default=1)
-    parser.add_argument("--hidden-size", type = int, default = 32)
-    parser.add_argument("--learning-rate", type=float, default=1e-2)
-    parser.add_argument("--batch-size", type=int, default=128)
-    parser.add_argument("--gradient-clipping", type=float, default=0.5)
-    parser.add_argument("--epochs", type=int, default=150)
-    parser.add_argument("--optimizer", type=str, default="adam")
-
-    args = parser.parse_args()
-
-    n_seq = 10000
-    seq_len = 50
-    data = generate_synthetic_data(n_seq = n_seq, seq_len = seq_len)
-
-    training_data, validation_data, test_data = split_data_to_train_validation_test(data)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    training_tensor = torch.from_numpy(training_data).float().unsqueeze(-1).to(device)
-    validation_tensor = torch.from_numpy(validation_data).float().unsqueeze(-1).to(device)
-    args_dict = vars(args)
-    model, _ =train_and_evaluate_lstm_ae(training_tensor, validation_tensor, device, args_dict)
-
-    validation_loader = DataLoader(TensorDataset(validation_tensor), batch_size=1, shuffle=True)
-    signal, = next(iter(validation_loader))
-    reconstructed_signal = reconstruct_input(model, signal)
-
-    plot_original_vs_reconstructed(signal[0].cpu().numpy(), reconstructed_signal[0].cpu().numpy())
-
+    section_1a()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument("--input-size", type=int, default=1)
+    # parser.add_argument("--hidden-size", type = int, default = 32)
+    # parser.add_argument("--learning-rate", type=float, default=1e-2)
+    # parser.add_argument("--batch-size", type=int, default=128)
+    # parser.add_argument("--gradient-clipping", type=float, default=0.5)
+    # parser.add_argument("--epochs", type=int, default=150)
+    # parser.add_argument("--optimizer", type=str, default="adam")
+    #
+    # args = parser.parse_args()
+    #
+    # n_seq = 10000
+    # seq_len = 50
+    # data = generate_synthetic_data(n_seq = n_seq, seq_len = seq_len)
+    #
+    # training_data, validation_data, test_data = split_data_to_train_validation_test(data)
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    #
+    # training_tensor = torch.from_numpy(training_data).float().unsqueeze(-1).to(device)
+    # validation_tensor = torch.from_numpy(validation_data).float().unsqueeze(-1).to(device)
+    # args_dict = vars(args)
+    # model, _ =train_and_evaluate_lstm_ae(training_tensor, validation_tensor, device, args_dict)
+    #
+    # validation_loader = DataLoader(TensorDataset(validation_tensor), batch_size=1, shuffle=True)
+    # signal, = next(iter(validation_loader))
+    # reconstructed_signal = reconstruct_input(model, signal)
+    #
+    # plot_original_vs_reconstructed(signal[0].cpu().numpy(), reconstructed_signal[0].cpu().numpy())
+    #
 

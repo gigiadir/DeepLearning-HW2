@@ -31,4 +31,4 @@ class LSTMAutoencoderPredictor(nn.Module):
 
         prediction = self.predictor_linear(decoder_output)
         prediction = prediction[:, -1, :].unsqueeze(1)
-        return prediction
+        return reconstruction, prediction
